@@ -1,0 +1,33 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1571670750379.000,
+    "dirty" : false,
+    "encoding" : "",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "B22DB4B8",
+    "lastKnownWriteTime" : -3458764513820540928,
+    "last_content_update" : 1571670750379,
+    "path" : null,
+    "project_path" : null,
+    "properties" : {
+        "cacheKey" : "51232AA5",
+        "caption" : "horror",
+        "contentUrl" : "grid_resource/gridviewer.html?env=&obj=horror&cache_key=51232AA5",
+        "displayedObservations" : "3328",
+        "environment" : "",
+        "expression" : "horror",
+        "object" : "horror",
+        "preview" : "0",
+        "totalObservations" : "3328",
+        "variables" : "14"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_dataframe"
+}

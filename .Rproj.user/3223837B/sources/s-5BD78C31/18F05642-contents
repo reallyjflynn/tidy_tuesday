@@ -1,0 +1,80 @@
+---
+title: "`2019-10-21`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, 
+                      warning = FALSE,
+                      message = FALSE)
+
+```
+
+
+
+
+```{r}
+
+library(tidyverse)
+library(scales)
+library(lubridate)
+library(tidytext)
+
+
+source(paste0(here::here(), '/R/theme.R'))
+
+```
+
+
+```{r}
+
+horror_movies <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-10-22/horror_movies.csv")
+
+
+currency <- '$|£|€|INR|$|$'
+
+horror <- horror_movies %>% 
+        mutate(release = as.Date(release_date, format = '%d-%b-%y'), 
+               release_year = coalesce(year(release), as.numeric(release_date)))
+
+
+horror_text <- horror %>% 
+        mutate(id = row_number()) %>%
+        mutate(plot = str_replace(plot, 'Directed by ', '')) %>% 
+        unnest_tokens(word, plot, token = "ngrams", n = 1)
+
+
+
+
+```
+
+
+
+
+```{r}
+
+library(ggbeeswarm)
+
+horror %>% 
+        ggplot(aes(release_year, review_rating)) + 
+        geom_quasirandom(alpha = .65) + 
+        theme_clean_light()
+
+```
+
+
+```{r}
+
+
+
+
+
+```
+
+
+
+
