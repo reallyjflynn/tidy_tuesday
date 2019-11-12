@@ -1,0 +1,247 @@
+---
+title: "Wine"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, 
+                      warning = FALSE, 
+                      message = FALSE)
+
+```
+
+
+
+Predicting Wine
+
+GLMNet and TidyLo
+
+```{r}
+
+library(tidyverse)
+library(tidytext)
+library(glmnet)
+library(tidylo)
+
+
+wine_ratings <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-05-28/winemag-data-130k-v2.csv")
+
+
+```
+
+
+We want to use text to make some prediction about whats a good wine. 
+Lets start by thinking how we can distinguish what is a good wine.
+
+
+```{r}
+
+glimpse(wine_ratings)
+
+summary(wine_ratings$points)
+
+wine_ratings %>% 
+        ggplot(aes(points)) + 
+        geom_histogram() + 
+        theme_minimal()
+
+```
+
+
+```{r}
+
+wine_ratings %>% 
+  filter(!is.na(country)) %>%
+        ggplot(aes(fct_reorder(country, points), points, 
+                   group = country, 
+                   color = country)) + 
+        geom_boxplot() + 
+        theme_minimal() +
+        guides(color = FALSE) + 
+        coord_flip()
+
+```
+
+
+```{r}
+
+most_common_wines <- wine_ratings %>% 
+  filter(!is.na(variety)) %>%
+  group_by(variety) %>% 
+  summarise(reviews = n()) %>% 
+  ungroup() %>%
+  top_n(10, wt = reviews) 
+
+
+most_common_wines %>% 
+  left_join(wine_ratings, by = 'variety') %>% 
+  ggplot(aes(fct_reorder(variety, points), points, 
+                   group = variety, 
+                   color = variety)) + 
+        geom_boxplot() + 
+        theme_minimal() +
+        guides(color = FALSE) + 
+        coord_flip()
+
+```
+
+
+
+### Tidy Lo
+
+
+Lets take a minute to look at Julia Silge's tidy lo package to help explore some of our text data. 
+So specifically, we want to know; what are the highest log odds terms for these wine varieties?
+
+```{r}
+
+
+wine_text <- wine_ratings %>% 
+        unnest_tokens(ngram, description, token = "ngrams", n = 1)
+
+
+wine_log_odds <- wine_text %>%
+        count(ngram, variety) %>%
+        bind_log_odds(variety, ngram, n)
+
+
+variety_list <- wine_text %>% 
+  select(variety) %>% 
+  distinct() %>%
+  unnest_tokens(var_gram, variety, token = stringr::str_split, pattern = " ") %>%
+  mutate(var_gram = tolower(var_gram), 
+         var_gram = str_trim(var_gram, side = 'both')) %>%
+  pull(var_gram)
+
+
+wine_stops <- c(
+  "cabernet", "bordeaux", "merlot", "sauvignon", "chardonnay", "merlot's", 
+  "merlots", "pinot", "pinots", "sauvignon", "syrah", "syrahs", "blend", 
+  "riesling", "noir", "rosé", "chablis", "sirah", "cab", "sample", "sb"
+)
+  
+```
+
+
+What we're looking for here is to see the difference between using TF-IDF and Log odds for selecting the most 'important' words for some these wine descriptions. 
+
+So after cleaning up our log odds by removing overly-obvious words (i.e. the names of wine varieties), how well do these top ten key words work for each wine variety. 
+
+The results are pretty good. 
+I'm not a wine drinker, but these log odds selected words make the wines sound delicious. 
+
+By describing a Chardonnay as buttered, pineapple, chard, pear, toast, tropical, lemon ... I'm getting a really nice description that doesn't sound anything like one of the other varieties. 
+Cola, cranbrerry, chery, silky, raspberry, tea ... is painting a very different description. 
+
+
+```{r}
+
+most_common_wines %>% 
+  left_join(wine_log_odds, by = 'variety') %>% 
+  mutate(ngram = str_replace(ngram, '\\d+', '')) %>%
+  filter(ngram != '') %>%
+  filter(!ngram %in% variety_list) %>%
+  filter(!ngram %in% wine_stops) %>%
+  group_by(variety) %>% 
+  top_n(10, wt = log_odds) %>%
+  ungroup() %>%
+  mutate(variety = as.factor(variety),
+         ngram = reorder_within(ngram, log_odds, variety)) %>%
+  ggplot(aes(ngram, log_odds)) + 
+  geom_col() + 
+  coord_flip() + 
+  scale_x_reordered() +
+  facet_wrap(~variety, scales = 'free') + 
+  theme_minimal()
+
+```
+
+
+
+### Topic Modeling
+
+
+
+```{r}
+
+library(tidytext)
+library(textmineR)
+library(rsample)
+
+variety_list <- wine_text %>% 
+  group_by(variety) %>% 
+  summarise(articles = n()) %>%
+  top_n(20, wt = articles) %>%
+  pull(variety)
+
+
+
+df <- wine_ratings %>% 
+  filter(variety %in% variety_list)
+
+
+split <- initial_split(df, prop = .75)
+train <- training(split)
+test <- testing(split)
+
+
+
+# tokenize using tidytext's unnest_tokens
+tidy_wine <- train %>% 
+  unnest_tokens(output = ngram, 
+                input = description,
+                stopwords = c(stopwords::stopwords("en"), 
+                              stopwords::stopwords(source = "smart"), 
+                              variety_list, 
+                              wine_stops),
+                token = "ngrams",
+                n_min = 1, n = 2) %>% 
+  count(variety, ngram) %>% 
+  filter(n > 1) #Filtering for words/bigrams per document, rather than per corpus
+
+tidy_wine <- tidy_wine %>% # filter words that are just numbers
+  filter(! stringr::str_detect(tidy_wine$ngram, "^[0-9]+$"))
+
+# turn a tidy tbl into a sparse dgCMatrix for use in textmineR
+d <- tidy_wine %>% 
+  cast_sparse(variety, ngram, n)
+
+
+# create a topic model
+m <- FitLdaModel(dtm = d, 
+                 k = 20,
+                 iterations = 200,
+                 burnin = 175)
+
+
+
+# below is equivalent to tidy_beta <- tidy(x = m, matrix = "beta")
+tidy_beta <- data.frame(topic = as.integer(stringr::str_replace_all(rownames(m$phi), "t_", "")), 
+                        m$phi, 
+                        stringsAsFactors = FALSE) %>%
+  pivot_longer(
+    -topic, 
+    names_to = 'term', 
+    values_to = 'beta') %>% 
+  tibble::as_tibble() %>% 
+  mutate(term = str_replace(term, '.', ' '))
+
+# below is equivalent to tidy_gamma <- tidy(x = m, matrix = "gamma")
+tidy_gamma <- data.frame(document = rownames(m$theta),
+                         m$theta,
+                         stringsAsFactors = FALSE) %>%
+  pivot_longer(
+    -document, 
+    names_to = 'topic',  
+    values_to = 'gamma')
+
+
+
+  
+```
+
