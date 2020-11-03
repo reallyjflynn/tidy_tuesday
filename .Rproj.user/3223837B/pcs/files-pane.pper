@@ -1,9 +1,9 @@
 {
-    "path" : "~/learning/tidy_tuesday/report",
-    "sortOrder" : [
+    "path": "~/learning/tidy_tuesday/2020-11-03",
+    "sortOrder": [
         {
-            "ascending" : true,
-            "columnIndex" : 2
+            "columnIndex": 2,
+            "ascending": true
         }
     ]
 }
